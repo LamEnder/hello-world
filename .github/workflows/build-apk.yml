@@ -1,0 +1,53 @@
+name: Build APK
+
+on:
+  push:
+    branches: [loop-station]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install and sync web assets
+        run: |
+          npm ci
+          npx cap sync android
+
+      - name: Build debug APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk ../LoopStation.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LoopStation-apk
+          path: LoopStation.apk
+
+      - name: Save APK to the loop-station-apk branch
+        run: |
+          mkdir out && cp LoopStation.apk out/ && cd out
+          git init -q -b loop-station-apk
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add LoopStation.apk && git commit -qm "APK from run ${{ github.run_number }}"
+          git push -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" loop-station-apk

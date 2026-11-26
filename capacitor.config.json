@@ -1,0 +1,2 @@
+{ "appId": "io.github.lamender.loopstation", "appName": "Loop Station", "webDir": "www",
+  "android": { "allowMixedContent": false } }

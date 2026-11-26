@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Loop Station</title>
+
+<style>
+@font-face{font-family:Rubik;font-weight:400;font-display:swap;src:url(fonts/rubik-latin-400-normal.woff2) format("woff2")}@font-face{font-family:Rubik;font-weight:500;font-display:swap;src:url(fonts/rubik-latin-500-normal.woff2) format("woff2")}@font-face{font-family:Rubik;font-weight:700;font-display:swap;src:url(fonts/rubik-latin-700-normal.woff2) format("woff2")}@font-face{font-family:"Press Start 2P";font-weight:400;font-display:swap;src:url(fonts/press-start-2p-latin-400-normal.woff2) format("woff2")}
+/* VOICE: a game console's "sound test" screen, but precise where it matters (samples, milliseconds)
+   IDEA: sound-test menu crossed with an audio editor timeline
+   PICTURE: the dark game screen with blocky live bars, then the colour-coded intro/loop waveform
+   COLOUR and TYPE: teal = intro, coral = loop, grey = tail that never plays; Press Start 2P on the screen, Rubik for the UI
+   LAYOUT: screen, transport, waveform, then A / B / seam cards, export, how games do it */
+:root{color-scheme:light dark;--bg:light-dark(#f3f2ef,#121218);--card:light-dark(#fff,#1c1c26);--ink:light-dark(#17171d,#ecebf2);--mute:light-dark(#5c5b68,#a6a5b6);--line:light-dark(#dcdae2,#2e2e3c);--intro:#11a2b4;--loop:#ff5a5f;--tail:light-dark(#b8b7c2,#4b4b5a);--screen:#0c0c13}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 Rubik,system-ui,sans-serif;overflow-x:clip}
+.wrap{max-width:1100px;margin:0 auto;padding:clamp(16px,3vw,32px) max(4vw,14px) 56px}
+h1{font:400 clamp(18px,3.4vw,26px)/1.3 "Press Start 2P",monospace;margin:0 0 6px}
+h2{font-size:18px;margin:0 0 10px}
+.lede{color:var(--mute);margin:0 0 18px;max-width:62ch}
+.stage{position:relative;aspect-ratio:16/7;min-height:230px;background:var(--screen) center/cover no-repeat;border-radius:16px;overflow:hidden;color:#fff}
+.stage.img::before{content:"";position:absolute;inset:0;background:rgba(6,6,12,.45)}
+.stage:fullscreen{aspect-ratio:auto;border-radius:0}
+.stage canvas{position:absolute;inset:0;width:100%;height:100%}
+.hud{position:absolute;inset:0;padding:clamp(12px,2.4vw,22px);display:flex;flex-direction:column;justify-content:space-between;pointer-events:none}
+.hud .row{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+#track{font-weight:500;font-size:15px;text-shadow:0 1px 3px #000;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.badge{font:400 13px/1 "Press Start 2P",monospace;padding:8px 10px;border-radius:6px;background:var(--intro);white-space:nowrap}
+.badge.loop{background:var(--loop)}.badge.tail{background:#555}
+#time{font:400 clamp(22px,5vw,40px)/1 "Press Start 2P",monospace;text-shadow:0 2px 0 #000}
+#loops{font:400 13px/1 "Press Start 2P",monospace;color:#ffd3d4;margin-top:10px;min-height:13px}
+.fs{pointer-events:auto;background:rgba(255,255,255,.14);border:0;color:#fff;border-radius:8px;min-height:44px;padding:0 12px;font:500 14px Rubik;cursor:pointer}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:14px 0}
+.btn{min-height:44px;padding:0 16px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);font:500 15px Rubik,sans-serif;cursor:pointer;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn.pri{background:var(--loop);border-color:var(--loop);color:#fff;min-width:96px;justify-content:center}
+.btn.sm{padding:0 10px;font-size:14px}
+.btn:focus-visible,.fs:focus-visible,input:focus-visible{outline:3px solid var(--intro);outline-offset:2px}
+input[type=file]{position:absolute;width:1px;height:1px;opacity:0}
+label.chk{display:inline-flex;gap:8px;align-items:center;min-height:44px;padding:0 6px;cursor:pointer}
+label.chk input{width:20px;height:20px;accent-color:var(--loop)}
+.vol{display:inline-flex;gap:8px;align-items:center;color:var(--mute);font-size:14px}
+.vol input{width:110px;accent-color:var(--loop)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px}
+.wavehead{display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center;margin-bottom:10px}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:14px;color:var(--mute)}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+#wave{display:block;width:100%;height:170px;touch-action:none;cursor:crosshair}
+.ends{display:flex;justify-content:space-between;font-size:13px;color:var(--mute);margin-top:4px;font-variant-numeric:tabular-nums}
+#note{font-size:14px;color:var(--mute);margin:8px 0 0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,290px),1fr));gap:14px;margin-top:14px}
+.pt h2 b{display:inline-block;width:26px;height:26px;border-radius:6px;color:#fff;text-align:center;line-height:26px;margin-right:8px;font:400 12px/26px "Press Start 2P",monospace}
+.fields{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.fields label{font-size:13px;color:var(--mute);display:grid;gap:4px}
+.fields input{font:16px Rubik,sans-serif;min-height:44px;padding:0 10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);width:100%;font-variant-numeric:tabular-nums}
+.nudge{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+#seam{display:block;width:100%;height:120px;border-radius:8px;background:var(--bg)}
+.seamlab{display:flex;justify-content:space-between;font-size:13px;color:var(--mute);margin:4px 0 10px}
+.meter{height:10px;border-radius:5px;background:var(--line);overflow:hidden}.meter div{height:100%;width:0;background:var(--loop);transition:width .2s}
+#verdict{font-weight:500;margin:8px 0 10px}
+pre{margin:0 0 10px;padding:12px;border-radius:10px;background:var(--bg);border:1px solid var(--line);font:15px/1.6 ui-monospace,Menlo,monospace;overflow-x:auto}
+.small{font-size:14px;color:var(--mute);margin:0}
+.games{margin-top:14px}
+.games ul{margin:0;padding-left:20px;display:grid;gap:8px;max-width:75ch}
+.drop{position:fixed;inset:0;background:rgba(255,90,95,.18);border:4px dashed var(--loop);display:none;place-items:center;font:400 16px "Press Start 2P",monospace;z-index:9}
+.drop.on{display:grid}
+@media(prefers-reduced-motion:reduce){.meter div{transition:none}}
+@media(max-width:600px){.stage{aspect-ratio:4/3}#wave{height:150px}}
+</style></head><body>
+<div class="wrap">
+<h1>Loop Station</h1>
+<p class="lede">Play any track the way a game does: the intro plays once, then the music loops forever between A and B. Drag A and B on the waveform, then check the seam.</p>
+
+<section class="stage" id="stage" aria-label="Now playing">
+  <canvas id="viz"></canvas>
+  <div class="hud">
+    <div class="row"><div id="track">—</div><span class="badge" id="badge">INTRO</span></div>
+    <div class="row" style="align-items:flex-end"><div><div id="time">0:00</div><div id="loops"></div></div><button class="fs" id="fsBtn" type="button">Full screen</button></div>
+  </div>
+</section>
+
+<div class="bar">
+  <label class="btn" for="file">Open music file</label><input type="file" id="file" accept="audio/*,.ogg,.oga,.opus,.flac,.wav,.mp3,.m4a">
+  <button class="btn pri" id="playBtn" type="button">Play</button>
+  <button class="btn" id="stopBtn" type="button">Stop</button>
+  <button class="btn" id="seamBtn" type="button">Test seam</button>
+  <button class="btn" id="fadeBtn" type="button">Fade out</button>
+  <label class="chk"><input type="checkbox" id="loopOn" checked> Loop</label>
+  <span class="vol">Volume <input type="range" id="vol" min="0" max="1" step="0.01" value="0.8" aria-label="Volume"></span>
+</div>
+
+<section class="card">
+  <div class="wavehead">
+    <div class="legend"><span><i style="background:var(--intro)"></i>Intro, plays once</span><span><i style="background:var(--loop)"></i>Loop, repeats</span><span><i style="background:var(--tail)"></i>Tail, skipped</span></div>
+    <div class="bar" style="margin:0">
+      <button class="btn sm" data-z="all" type="button">Whole song</button>
+      <button class="btn sm" data-z="A" type="button">Zoom A</button>
+      <button class="btn sm" data-z="B" type="button">Zoom B</button>
+      <button class="btn sm" data-z="out" type="button" aria-label="Zoom out">−</button>
+      <button class="btn sm" data-z="in" type="button" aria-label="Zoom in">+</button>
+    </div>
+  </div>
+  <canvas id="wave" aria-label="Waveform. Drag the A and B flags to set the loop; tap elsewhere to seek."></canvas>
+  <div class="ends"><span id="vStart">0:00.000</span><span id="vEnd">0:00.000</span></div>
+  <p id="note"></p>
+</section>
+
+<div class="grid">
+  <section class="card pt">
+    <h2><b style="background:var(--intro)">A</b>Loop start</h2>
+    <div class="fields">
+      <label>Seconds<input id="aSec" type="number" step="0.001" min="0" inputmode="decimal"></label>
+      <label>Samples<input id="aSmp" type="number" step="1" min="0" inputmode="numeric"></label>
+    </div>
+    <div class="nudge" data-p="A"></div>
+  </section>
+  <section class="card pt">
+    <h2><b style="background:var(--loop)">B</b>Loop end</h2>
+    <div class="fields">
+      <label>Seconds<input id="bSec" type="number" step="0.001" min="0" inputmode="decimal"></label>
+      <label>Samples<input id="bSmp" type="number" step="1" min="0" inputmode="numeric"></label>
+    </div>
+    <div class="nudge" data-p="B"></div>
+  </section>
+  <section class="card">
+    <h2>The seam</h2>
+    <canvas id="seam" aria-label="Waveform around the jump from B back to A"></canvas>
+    <div class="seamlab"><span>← just before B</span><span>jump</span><span>A onward →</span></div>
+    <div class="meter"><div id="meter"></div></div>
+    <div id="verdict">—</div>
+    <button class="btn" id="matchBtn" type="button">Auto-match B to A</button>
+    <p class="small" style="margin-top:8px">Coral is what you'll hear. Grey is what the file would play if it didn't jump. When they line up, the loop is seamless.</p>
+  </section>
+</div>
+
+<div class="grid">
+  <section class="card">
+    <h2>Loop tags</h2>
+    <pre id="tags"></pre>
+    <div class="bar" style="margin:0 0 8px"><button class="btn" id="copyBtn" type="button">Copy tags</button></div>
+    <p class="small" id="tagInfo"></p>
+  </section>
+  <section class="card">
+    <h2>Screen</h2>
+    <p class="small" style="margin-bottom:10px">Put a picture behind the visualizer to turn it into a music video. Go full screen when you play it.</p>
+    <div class="bar" style="margin:0">
+      <label class="btn" for="img">Choose background image</label><input type="file" id="img" accept="image/*">
+      <button class="btn" id="noImg" type="button">Remove</button>
+    </div>
+    <p class="small" style="margin-top:10px">Your loop points are saved on this phone for each file. OGG, WAV and FLAC loop most precisely. MP3 can carry a few milliseconds of encoder padding.</p>
+  </section>
+</div>
+
+<section class="card games">
+  <h2>How games loop their music</h2>
+  <ul>
+    <li><b>Intro + loop body.</b> Most game tracks play an opening once. When they reach a loop end, they jump back to a loop start partway through, so the music runs as long as you stay in the area. This page uses the same model.</li>
+    <li><b>RPG Maker</b> reads <code>LOOPSTART</code> and <code>LOOPLENGTH</code> tags (in samples) from Ogg files. Open a tagged file here and its loop is picked up automatically. Copy the tags above to tag your own files.</li>
+    <li><b>Rips have a tail.</b> Soundtrack rips are often exported as "two loops, then a fade." So the loop end is usually not the end of the file. The grey tail is the part a game never reaches.</li>
+    <li><b>Engines.</b> FMOD and Wwise mark loop regions on the track timeline. In Unity, developers often split a track into an intro clip and a loop clip, then schedule the loop to start exactly when the intro ends.</li>
+    <li><b>Old consoles</b> (NES, SNES era) played sequenced music note by note. Their "loop" was a jump command in the sequence, so there was no audio seam at all.</li>
+  </ul>
+</section>
+</div>
+<div class="drop" id="drop">Drop to load</div>
+<span id="probe" style="display:none"></span>
+
+<script>
+{
+const $=id=>document.getElementById(id);
+const fmt=(t,ms=true)=>{t=Math.max(0,t);const m=Math.floor(t/60),s=t-m*60;return m+':'+(s<10?'0':'')+(ms?s.toFixed(3):Math.floor(s))};
+const probe=$('probe');
+const col=v=>{probe.style.color='var('+v+')';return getComputedStyle(probe).color};
+let ctx=null,gain=null,an=null,fdata=null,vol=.8;
+let buf=null,mono=null,peak=1,sr=44100,srcRate=44100,dur=0,A=0,B=0,loopOn=true;
+let src=null,playing=false,ancCtx=0,ancPos=0,paused=0,loopsBase=0,view=[0,1],drag=null,saveKey='',fadeT=0,dpr=1;
+
+function ensureCtx(){if(ctx)return;const C=window.AudioContext||window.webkitAudioContext;ctx=new C();gain=ctx.createGain();gain.gain.value=vol;an=ctx.createAnalyser();an.fftSize=128;an.smoothingTimeConstant=.78;fdata=new Uint8Array(an.frequencyBinCount);gain.connect(an);an.connect(ctx.destination)}
+const rawPos=()=>ancPos+(ctx.currentTime-ancCtx);
+function curLoops(){if(!playing||!loopOn)return 0;const p=rawPos();return p>=B?Math.floor((p-B)/(B-A))+1:0}
+function pos(){if(!playing)return paused;let p=rawPos();if(loopOn&&p>=B)p=A+((p-B)%(B-A));return Math.min(p,dur)}
+
+function stopSrc(){if(src){const s=src;src=null;try{s.stop()}catch(e){}s.disconnect()}}
+function clearFade(){clearTimeout(fadeT);fadeT=0;if(ctx){const n=ctx.currentTime;gain.gain.cancelScheduledValues(n);gain.gain.setValueAtTime(vol,n)}}
+function play(from){
+  if(!buf)return;ensureCtx();ctx.resume().catch(()=>{});clearFade();
+  if(playing){playing=false;stopSrc()}
+  if(from==null)from=paused;
+  if(from>=dur-.01)from=0;
+  if(loopOn&&from>=B)from=A;
+  const s=ctx.createBufferSource();s.buffer=buf;s.loop=loopOn;s.loopStart=A;s.loopEnd=B;s.connect(gain);
+  s.onended=()=>{if(s===src){src=null;playing=false;paused=0;loopsBase=0;ui()}};
+  s.start(0,from);src=s;ancCtx=ctx.currentTime;ancPos=from;playing=true;ui();
+}
+function pause(){if(!playing)return;paused=pos();loopsBase+=curLoops();playing=false;stopSrc();ui()}
+function stop(){if(playing){playing=false;stopSrc()}paused=0;loopsBase=0;clearFade();ui()}
+function rebase(fn){let p,l;if(playing){p=pos();l=curLoops()}fn();if(playing){loopsBase+=l;ancPos=p;ancCtx=ctx.currentTime;if(src){src.loop=loopOn;src.loopStart=0;src.loopEnd=B;src.loopStart=A}}}
+
+function setPoints(a,b,save=true){
+  if(!buf)return;
+  a=Math.max(0,Math.min(a,dur-.05));b=Math.max(a+.05,Math.min(b,dur));
+  rebase(()=>{A=a;B=b});refresh();if(save)store();
+}
+function store(){try{localStorage.setItem(saveKey,JSON.stringify({A,B}))}catch(e){}}
+
+function refresh(){
+  const set=(id,v)=>{const el=$(id);if(document.activeElement!==el)el.value=v};
+  set('aSec',A.toFixed(3));set('bSec',B.toFixed(3));set('aSmp',Math.round(A*srcRate));set('bSmp',Math.round(B*srcRate));
+  const ls=Math.round(A*srcRate),le=Math.round(B*srcRate);
+  $('tags').textContent='LOOPSTART='+ls+'\nLOOPLENGTH='+(le-ls)+'\nLOOPEND='+le;
+  $('tagInfo').textContent='Samples at '+srcRate+' Hz. Intro '+(A).toFixed(3)+' s, loop '+(B-A).toFixed(3)+' s. Most games only need LOOPSTART and LOOPLENGTH.';
+  const s=score(Math.round(A*sr),Math.round(B*sr));
+  $('meter').style.width=(s*100).toFixed(0)+'%';
+  $('verdict').textContent=(s>.9?'Seamless':s>.6?'Close. Try Auto-match.':'Audible jump likely. Try Auto-match or move B.')+' ('+Math.round(s*100)+'% match)';
+  drawSeam();
+}
+function score(a,b){const N=1024;let err=0,en=0;for(let i=-N;i<N;i++){const x=mono[a+i]||0,y=mono[b+i]||0;err+=(x-y)*(x-y);en+=x*x+y*y}return en<1e-9?1:Math.max(0,1-err/en)}
+
+function useBuffer(b,nm,rate,pts,msg){
+  stop();buf=b;sr=b.sampleRate;srcRate=rate||sr;dur=b.duration;
+  mono=new Float32Array(b.length);const ch=b.numberOfChannels;
+  for(let c=0;c<ch;c++){const d=b.getChannelData(c);for(let i=0;i<d.length;i++)mono[i]+=d[i]/ch}
+  peak=1e-6;for(let i=0;i<mono.length;i+=7)peak=Math.max(peak,Math.abs(mono[i]));
+  saveKey='loopstation:'+nm+':'+Math.round(dur*1000);
+  let a=0,e=dur;
+  if(pts){[a,e]=pts}else{msg='No loop points yet. Drag A and B on the waveform, or type them in below.';try{const s=JSON.parse(localStorage.getItem(saveKey)||'null');if(s){a=s.A;e=s.B;msg='Restored the loop points you saved for this file.'}}catch(x){}}
+  view=[0,dur];$('track').textContent=nm;$('note').textContent=msg;A=0;B=dur;setPoints(a,e,false);ui();
+}
+
+function sniff(ab){
+  const u=new Uint8Array(ab,0,Math.min(ab.byteLength,1<<19));let s='';
+  for(let i=0;i<u.length;i+=8192)s+=String.fromCharCode.apply(null,u.subarray(i,i+8192));
+  const dv=new DataView(ab);let rate=0,k=s.indexOf('\x01vorbis');
+  if(k>=0&&k+16<=ab.byteLength)rate=dv.getUint32(k+12,true);
+  else if(s.indexOf('OpusHead')>=0)rate=48000;
+  else if(s.slice(0,4)==='fLaC'&&u.length>21)rate=(u[18]<<12)|(u[19]<<4)|(u[20]>>4);
+  else if(s.slice(0,4)==='RIFF'&&s.slice(8,12)==='WAVE'){k=s.indexOf('fmt ');if(k>=0&&k+16<=ab.byteLength)rate=dv.getUint32(k+12,true)}
+  const g=re=>{const m=s.match(re);return m?parseInt(m[1],10):null};
+  return{rate:rate>0&&rate<400000?rate:0,start:g(/LOOPSTART[=\x00]+(\d+)/i),len:g(/LOOPLENGTH[=\x00]+(\d+)/i),end:g(/LOOPEND[=\x00]+(\d+)/i)};
+}
+async function loadFile(f){
+  if(!f)return;ensureCtx();$('note').textContent='Decoding '+f.name+'…';
+  try{
+    const ab=await f.arrayBuffer();const t=sniff(ab);
+    const b=await new Promise((res,rej)=>{const p=ctx.decodeAudioData(ab,res,rej);if(p&&p.catch)p.catch(rej)});
+    const r=t.rate||b.sampleRate;let pts=null,msg='';
+    if(t.start!=null){const s=t.start/r,e=t.len!=null?(t.start+t.len)/r:t.end!=null?t.end/r:b.duration;pts=[s,e];msg='Found loop tags in this file and used them.'}
+    useBuffer(b,f.name,t.rate,pts,msg);
+  }catch(e){$('note').textContent="Couldn't decode that file. Try OGG, WAV, MP3, M4A or FLAC."}
+}
+
+function makeDemo(){
+  const R=44100,E=11025,notes=[];
+  [60,64,67,72,64,67,72,76,65,69,72,77,67,71,74,79].forEach((m,i)=>notes.push([i,1,m,0]));
+  [[48,0],[43,8]].forEach(([m,s])=>{for(let q=0;q<4;q++)notes.push([s+q*2,2,m,1])});
+  const ch=[[69,72,76,45],[65,69,72,41],[67,72,76,48],[67,71,74,43]],pat=[0,1,2,3,2,1,3,2];
+  const bar=(st,c)=>{pat.forEach((p,i)=>notes.push([st+i,1,p===3?c[0]+12:c[p],0]));for(let q=0;q<4;q++)notes.push([st+q*2,2,c[3],1])};
+  for(let r=0;r<4;r++)bar(16+r*8,ch[r]);bar(48,ch[0]);
+  const len=56*E,d=new Float32Array(len);
+  for(const[st,ln,m,k]of notes){
+    const f=440*2**((m-69)/12),i0=st*E,n=ln*E;
+    for(let i=0;i<n&&i0+i<len;i++){
+      const t=i/R,env=Math.min(1,t/.004)*Math.min(1,(n-i)/(.01*R))*Math.exp(-t*(k?3:7)),ph=f*t,fr=ph-Math.floor(ph);
+      d[i0+i]+=k?.3*env*(4*Math.abs(fr-.5)-1):.13*env*(fr<.5?1:-1);
+    }
+  }
+  const f0=Math.round(12.4*R);for(let i=f0;i<len;i++)d[i]*=1-(i-f0)/(len-f0);
+  let b;try{b=new AudioBuffer({length:len,sampleRate:R,numberOfChannels:1})}catch(e){ensureCtx();b=ctx.createBuffer(1,len,R)}
+  b.copyToChannel?b.copyToChannel(d,0):b.getChannelData(0).set(d);return b;
+}
+
+const sizes=new Map();
+function fit(c){const r=c.getBoundingClientRect();dpr=window.devicePixelRatio||1;c.width=Math.max(1,Math.round(r.width*dpr));c.height=Math.max(1,Math.round(r.height*dpr));sizes.set(c,[r.width,r.height])}
+const tx=t=>(t-view[0])/(view[1]-view[0])*(sizes.get($('wave'))||[1])[0];
+const xt=x=>view[0]+x/((sizes.get($('wave'))||[1])[0])*(view[1]-view[0]);
+
+function drawWave(){
+  const c=$('wave'),[W,H]=sizes.get(c)||[0,0];if(!W||!buf)return;const g=c.getContext('2d');
+  g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);
+  const top=22,mid=top+(H-top)/2,amp=(H-top)/2-4,[v0,v1]=view,sp=v1-v0;
+  const ci=col('--intro'),cl=col('--loop'),ct=col('--tail'),ink=col('--ink');
+  g.globalAlpha=.1;g.fillStyle=ci;g.fillRect(tx(v0),top,tx(Math.min(A,v1))-tx(v0),H-top);g.fillStyle=cl;g.fillRect(tx(Math.max(A,v0)),top,Math.max(0,tx(Math.min(B,v1))-tx(Math.max(A,v0))),H-top);g.globalAlpha=1;
+  for(let x=0;x<W;x++){
+    const t0=v0+sp*x/W,i0=Math.floor(t0*sr),i1=Math.max(i0+1,Math.floor((v0+sp*(x+1)/W)*sr)),st=Math.max(1,Math.floor((i1-i0)/40));
+    let mn=0,mx=0;for(let i=i0;i<i1&&i<mono.length;i+=st){const v=mono[i];if(v<mn)mn=v;if(v>mx)mx=v}
+    g.fillStyle=t0<A?ci:t0<B?cl:ct;g.fillRect(x,mid-mx/peak*amp,1,Math.max(1,(mx-mn)/peak*amp));
+  }
+  for(const[t,l,cc,side]of[[A,'A',ci,1],[B,'B',cl,-1]]){
+    const x=tx(t);if(x<-24||x>W+24)continue;
+    g.fillStyle=cc;g.fillRect(x-1,0,2,H);g.fillRect(side>0?x:x-24,0,24,20);
+    g.fillStyle='#fff';g.font='400 10px "Press Start 2P",monospace';g.textAlign='center';g.textBaseline='middle';g.fillText(l,x+side*12,11);
+  }
+  const px=tx(pos());if(px>=0&&px<=W){g.fillStyle=ink;g.fillRect(px-1,top,2,H-top)}
+}
+function drawSeam(){
+  const c=$('seam'),[W,H]=sizes.get(c)||[0,0];if(!W||!buf)return;const g=c.getContext('2d');
+  g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);
+  const n=Math.round(.02*sr),a=Math.round(A*sr),b=Math.round(B*sr),get=i=>mono[i]||0;
+  let pk=1e-6;for(let i=-n;i<n;i++)pk=Math.max(pk,Math.abs(get(b+i)),Math.abs(get(a+i)));
+  const y=v=>H/2-v/pk*(H/2-8),X=i=>(i+n)/(2*n)*W;
+  g.strokeStyle=col('--line');g.setLineDash([4,4]);g.beginPath();g.moveTo(W/2,0);g.lineTo(W/2,H);g.stroke();g.setLineDash([]);
+  g.lineWidth=2;g.strokeStyle=col('--tail');g.beginPath();for(let i=0;i<n;i++){const p=X(i),q=y(get(b+i));i?g.lineTo(p,q):g.moveTo(p,q)}g.stroke();
+  g.strokeStyle=col('--loop');g.beginPath();for(let i=-n;i<n;i++){const p=X(i),q=y(i<0?get(b+i):get(a+i));i===-n?g.moveTo(p,q):g.lineTo(p,q)}g.stroke();g.lineWidth=1;
+}
+function drawViz(){
+  const c=$('viz'),[W,H]=sizes.get(c)||[0,0];if(!W)return;const g=c.getContext('2d');
+  g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,W,H);
+  if(an&&playing)an.getByteFrequencyData(fdata);
+  const p=pos(),cc=p<A?'#11a2b4':p<B?'#ff5a5f':'#777',n=32,bw=W/n,blk=8;
+  for(let i=0;i<n;i++){
+    const v=playing&&fdata?fdata[i+1]/255:.03+.02*Math.sin(i*.7+performance.now()/900);
+    const cnt=Math.max(1,Math.round(v*H*.62/blk));
+    for(let j=0;j<cnt;j++){g.globalAlpha=.35+.65*(j/cnt);g.fillStyle=cc;g.fillRect(i*bw+2,H-(j+1)*blk,bw-4,blk-2)}
+  }
+  g.globalAlpha=1;
+}
+let lastHud='';
+function hud(){
+  const p=pos(),sec=p<A?'INTRO':p<B?'LOOP':'TAIL',l=loopsBase+curLoops();
+  const k=sec+fmt(p,false)+l;if(k===lastHud)return;lastHud=k;
+  const b=$('badge');b.textContent=sec;b.className='badge'+(sec==='LOOP'?' loop':sec==='TAIL'?' tail':'');
+  $('time').textContent=fmt(p,false);$('loops').textContent=loopOn&&l>0?'LOOP ×'+l:'';
+}
+function ui(){$('playBtn').textContent=playing?'Pause':'Play';$('vStart').textContent=fmt(view[0]);$('vEnd').textContent=fmt(view[1])}
+function frame(){drawWave();drawViz();hud();requestAnimationFrame(frame)}
+
+const ro=new ResizeObserver(()=>{['wave','seam','viz'].forEach(id=>fit($(id)));drawSeam()});
+['wave','seam','viz'].forEach(id=>ro.observe($(id)));
+
+const wv=$('wave');
+wv.addEventListener('pointerdown',e=>{
+  if(!buf)return;const x=e.offsetX,xa=tx(A),xb=tx(B);
+  const dA=Math.min(Math.abs(x-xa),Math.abs(x-xa-12)),dB=Math.min(Math.abs(x-xb),Math.abs(x-xb+12));
+  if(Math.min(dA,dB)<16){drag=dB<=dA?'B':'A';try{wv.setPointerCapture(e.pointerId)}catch(z){}return}
+  const t=Math.max(0,Math.min(dur,xt(x)));if(playing)play(t);else{paused=t;loopsBase=0}
+});
+wv.addEventListener('pointermove',e=>{if(!drag)return;const t=xt(e.offsetX);if(drag==='A')setPoints(Math.min(t,B-.05),B,false);else setPoints(A,Math.max(t,A+.05),false)});
+const endDrag=()=>{if(drag){drag=null;store()}};wv.addEventListener('pointerup',endDrag);wv.addEventListener('pointercancel',endDrag);
+
+function zoom(kind){
+  if(!buf)return;let[v0,v1]=view,sp=v1-v0,c=(v0+v1)/2;
+  if(kind==='all'){v0=0;v1=dur}else{if(kind==='A'||kind==='B'){c=kind==='A'?A:B;sp=Math.min(4,dur)}else sp=kind==='in'?Math.max(.05,sp/2):Math.min(dur,sp*2);v0=c-sp/2;v1=c+sp/2;if(v0<0){v1-=v0;v0=0}if(v1>dur){v0-=v1-dur;v1=dur}v0=Math.max(0,v0)}
+  view=[v0,v1];ui();
+}
+document.querySelectorAll('[data-z]').forEach(b=>b.onclick=()=>zoom(b.dataset.z));
+
+document.querySelectorAll('.nudge').forEach(box=>{
+  const p=box.dataset.p;
+  box.innerHTML=[[-.01,'−10 ms'],[-.001,'−1 ms'],[.001,'+1 ms'],[.01,'+10 ms']].map(([d,l])=>'<button class="btn sm" type="button" data-d="'+d+'">'+l+'</button>').join('')+'<button class="btn sm" type="button" data-d="here">Set to playhead</button>';
+  box.onclick=e=>{const d=e.target.dataset.d;if(!d)return;const v=d==='here'?pos():(p==='A'?A:B)+parseFloat(d);p==='A'?setPoints(v,B):setPoints(A,v)};
+});
+$('aSec').onchange=e=>setPoints(parseFloat(e.target.value)||0,B);
+$('bSec').onchange=e=>setPoints(A,parseFloat(e.target.value)||dur);
+$('aSmp').onchange=e=>setPoints((parseFloat(e.target.value)||0)/srcRate,B);
+$('bSmp').onchange=e=>setPoints(A,(parseFloat(e.target.value)||0)/srcRate);
+
+$('matchBtn').onclick=()=>{
+  if(!buf)return;const a=Math.round(A*sr),b=Math.round(B*sr),R=Math.round(.05*sr);let best=b,bs=-1;
+  for(let c=Math.max(a+Math.round(.05*sr),b-R);c<=Math.min(mono.length-1,b+R);c++){const s=score(a,c);if(s>bs){bs=s;best=c}}
+  const ms=((best-b)/sr*1000).toFixed(1);setPoints(A,best/sr);$('note').textContent='Auto-match moved B by '+(ms>0?'+':'')+ms+' ms.';
+};
+
+$('playBtn').onclick=()=>playing?pause():play();
+$('stopBtn').onclick=stop;
+$('seamBtn').onclick=()=>{if(!buf)return;if(!loopOn){$('loopOn').checked=true;loopOn=true}play(Math.max(0,B-3))};
+$('fadeBtn').onclick=()=>{if(!playing)return;const n=ctx.currentTime,gg=gain.gain;gg.cancelScheduledValues(n);gg.setValueAtTime(gg.value,n);gg.linearRampToValueAtTime(0,n+3);clearTimeout(fadeT);fadeT=setTimeout(stop,3000)};
+$('loopOn').onchange=e=>rebase(()=>{loopOn=e.target.checked});
+$('vol').oninput=e=>{vol=parseFloat(e.target.value);if(ctx&&!fadeT)gain.gain.setValueAtTime(vol,ctx.currentTime)};
+$('file').onchange=e=>{loadFile(e.target.files[0]);e.target.value=''};
+
+let imgUrl='';
+function setImg(f){if(!f)return;if(imgUrl)URL.revokeObjectURL(imgUrl);imgUrl=URL.createObjectURL(f);$('stage').style.backgroundImage='url("'+imgUrl+'")';$('stage').classList.add('img')}
+$('img').onchange=e=>{setImg(e.target.files[0]);e.target.value=''};
+$('noImg').onclick=()=>{$('stage').style.backgroundImage='';$('stage').classList.remove('img')};
+$('fsBtn').onclick=()=>{const s=$('stage');try{const r=document.fullscreenElement?document.exitFullscreen():(s.requestFullscreen||s.webkitRequestFullscreen).call(s);if(r&&r.catch)r.catch(()=>{})}catch(e){}};
+
+$('copyBtn').onclick=()=>{const t=$('tags').textContent,b=$('copyBtn');
+  const sel=()=>{const r=document.createRange();r.selectNodeContents($('tags'));const s=getSelection();s.removeAllRanges();s.addRange(r);b.textContent='Selected. Copy it now'};
+  try{navigator.clipboard.writeText(t).then(()=>{b.textContent='Copied';setTimeout(()=>b.textContent='Copy tags',1500)},sel)}catch(e){sel()}};
+
+document.addEventListener('keydown',e=>{if(e.code==='Space'&&!/INPUT|TEXTAREA|SELECT|BUTTON/.test(document.activeElement.tagName)){e.preventDefault();playing?pause():play()}});
+let dd=0;
+document.addEventListener('dragenter',e=>{e.preventDefault();dd++;$('drop').classList.add('on')});
+document.addEventListener('dragleave',()=>{if(--dd<=0){dd=0;$('drop').classList.remove('on')}});
+document.addEventListener('dragover',e=>e.preventDefault());
+document.addEventListener('drop',e=>{e.preventDefault();dd=0;$('drop').classList.remove('on');const f=e.dataTransfer.files[0];if(!f)return;f.type.startsWith('image/')?setImg(f):loadFile(f)});
+
+['wave','seam','viz'].forEach(id=>fit($(id)));
+useBuffer(makeDemo(),'Demo track: Sound Test',44100,[4,12],'This demo track already has its loop points set. Press Play, or tap Test seam to hear the jump. Then open your own file.');
+requestAnimationFrame(frame);
+}
+</script>
+</body></html>
